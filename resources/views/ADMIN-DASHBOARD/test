@@ -1,0 +1,87 @@
+function openLocationModal(reportLat, reportLng) {
+    console.log('Location Modal Triggered:', reportLat, reportLng); // Add this line
+    const userEmail = "{{ session('firebase_user_email') }}"; // Logged-in user email
+    let stationLatitude, stationLongitude;
+
+    // Fetching Cuambugan Fire Station data
+    cuambuganRef.once('value').then(snapshot => {
+        const data = snapshot.val();
+        if (data && data.email && data.email.toLowerCase() === userEmail.toLowerCase()) {
+            stationLatitude = data.latitude;
+            stationLongitude = data.longitude;
+            updateMap(reportLat, reportLng, stationLatitude, stationLongitude);
+            return; // Prevent further execution of LaFilipina and Mabini fetch
+        }
+
+        // If Cuambugan data is not found, try LaFilipina Fire Station
+        laFilipinaRef.once('value').then(snapshot => {
+            const data = snapshot.val();
+            if (data && data.email && data.email.toLowerCase() === userEmail.toLowerCase()) {
+                stationLatitude = data.latitude;
+                stationLongitude = data.longitude;
+                updateMap(reportLat, reportLng, stationLatitude, stationLongitude);
+                return; // Prevent further execution of Mabini fetch
+            }
+
+            // If LaFilipina data is not found, try Mabini Fire Station
+            mabiniRef.once('value').then(snapshot => {
+                const data = snapshot.val();
+                if (data && data.email && data.email.toLowerCase() === userEmail.toLowerCase()) {
+                    stationLatitude = data.latitude;
+                    stationLongitude = data.longitude;
+                    updateMap(reportLat, reportLng, stationLatitude, stationLongitude);
+                }
+            }).catch(err => {
+                console.log('Error fetching Mabini data:', err);
+            });
+
+        }).catch(err => {
+            console.log('Error fetching LaFilipina data:', err);
+        });
+
+    }).catch(err => {
+        console.log('Error fetching Cuambugan data:', err);
+    });
+
+    // Show the modal
+    document.getElementById('locationModal').classList.remove('hidden');
+}
+
+// Update the map with the station location and geofencing
+function updateMap(reportLat, reportLng, stationLat, stationLng) {
+    // Initialize the map inside the #mapContainer div
+    const map = new google.maps.Map(document.getElementById('mapContainer'), {
+        center: { lat: reportLat, lng: reportLng },
+        zoom: 14,
+    });
+
+    // Create a marker for the report location
+    new google.maps.Marker({
+        position: { lat: reportLat, lng: reportLng },
+        map: map,
+        title: 'Report Location',
+    });
+
+    // Create a marker for the fire station location
+    new google.maps.Marker({
+        position: { lat: stationLat, lng: stationLng },
+        map: map,
+        title: 'Fire Station Location',
+    });
+
+    // Create the geofence circle around the report location (not the fire station)
+    const geofenceRadius = 1000; // 1 km radius for geofencing
+    new google.maps.Circle({
+        map: map,
+        center: { lat: reportLat, lng: reportLng }, // Center circle on the report location
+        radius: geofenceRadius,
+        fillColor: 'rgba(255, 0, 0, 0.3)',  // Red with transparency
+        fillOpacity: 0.3,
+        strokeColor: 'red',
+        strokeOpacity: 0.7,
+        strokeWeight: 2,
+    });
+
+    // Check if the report location is within the geofence around the fire station
+    checkGeofence(reportLat, reportLng, stationLat, stationLng);
+}
