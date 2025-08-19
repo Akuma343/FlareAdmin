@@ -18,7 +18,7 @@ class AuthController extends Controller
     {
         try {
             // Match the same service account path logic as FirebaseService
-            $serviceAccountPath = storage_path('storage/flare-capstone-c029d-firebase-adminsdk-fbsvc-fea819ac7f.json');
+            $serviceAccountPath = storage_path('flare-capstone-c029d-firebase-adminsdk-fbsvc-fea819ac7f.json');
 
             // Check existence and readability like FirebaseService does
             if (!file_exists($serviceAccountPath)) {
