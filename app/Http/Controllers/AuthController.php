@@ -18,8 +18,7 @@ class AuthController extends Controller
     {
         try {
             // Match the same service account path logic as FirebaseService
-            $serviceAccount = ServiceAccount::fromJsonFile('/etc/secrets/firebase.json');
-
+            $serviceAccountPath = storage_path('storage/flare-capstone-c029d-firebase-adminsdk-fbsvc-fea819ac7f.json');
 
             // Check existence and readability like FirebaseService does
             if (!file_exists($serviceAccountPath)) {
@@ -49,7 +48,7 @@ class AuthController extends Controller
 
     $email = $request->input('email');
     $password = $request->input('password');
-
++
     // Define the list of allowed emails
     $allowedEmails = [
         'mabini123@gmail.com',
