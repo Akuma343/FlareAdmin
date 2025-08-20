@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
 use Kreait\Firebase\Factory;
 use Kreait\Firebase\Auth as FirebaseAuth;
-use Google\Cloud\Core\Exception\GoogleException;
 
 class AuthController extends Controller
 {
@@ -17,21 +16,26 @@ class AuthController extends Controller
     public function __construct()
     {
         try {
-            // Match the same service account path logic as FirebaseService
-            $serviceAccountPath = storage_path('storage/flare-capstone-c029d-firebase-adminsdk-fbsvc-fea819ac7f.json');
+            // Build credentials from .env instead of JSON file
+            $firebaseCredentials = [
+                "type" => "service_account",
+                "project_id" => env('FIREBASE_PROJECT_ID'),
+                "private_key" => str_replace("\\n", "\n", env('FIREBASE_PRIVATE_KEY')),
+                "client_email" => env('FIREBASE_CLIENT_EMAIL'),
+                "token_uri" => "https://oauth2.googleapis.com/token",
+            ];
 
-            // Check existence and readability like FirebaseService does
-            if (!file_exists($serviceAccountPath)) {
-                throw new \RuntimeException("Firebase service account file not found at: {$serviceAccountPath}");
+            if (
+                empty($firebaseCredentials['project_id']) ||
+                empty($firebaseCredentials['private_key']) ||
+                empty($firebaseCredentials['client_email'])
+            ) {
+                throw new \RuntimeException("Firebase credentials are missing or invalid. Check your .env file.");
             }
 
-            if (!is_readable($serviceAccountPath)) {
-                throw new \RuntimeException("Firebase service account file is not readable at: {$serviceAccountPath}");
-            }
-
-            // Initialize Firebase Auth
+            // Initialize Firebase Auth with .env credentials
             $this->auth = (new Factory)
-                ->withServiceAccount($serviceAccountPath)
+                ->withServiceAccount($firebaseCredentials)
                 ->createAuth();
 
         } catch (\Exception $e) {
@@ -39,74 +43,67 @@ class AuthController extends Controller
         }
     }
 
-   public function login(Request $request)
-{
-    $request->validate([
-        'email' => 'required|email',
-        'password' => 'required'
-    ]);
-
-    $email = $request->input('email');
-    $password = $request->input('password');
-+
-    // Define the list of allowed emails
-    $allowedEmails = [
-        'mabini123@gmail.com',
-        'lafilipina123@gmail.com',
-        'canocotan123@gmail.com'
-    ];
-
-    // Check if the email is in the allowed list
-    if (!in_array($email, $allowedEmails)) {
-        return back()->withErrors(['login' => 'Invalid credentials.'])->withInput();
-    }
-
-    try {
-        $firebaseApiKey = config('services.firebase.api_key');
-
-        // Send request to Firebase Authentication
-        $response = Http::post("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={$firebaseApiKey}", [
-            'email' => $email,
-            'password' => $password,
-            'returnSecureToken' => true
+    public function login(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required'
         ]);
 
-        if (!$response->ok()) {
-            // Do not return specific password errors
+        $email = $request->input('email');
+        $password = $request->input('password');
+
+        // Define allowed emails
+        $allowedEmails = [
+            'mabini123@gmail.com',
+            'lafilipina123@gmail.com',
+            'canocotan123@gmail.com'
+        ];
+
+        if (!in_array($email, $allowedEmails)) {
             return back()->withErrors(['login' => 'Invalid credentials.'])->withInput();
         }
 
-        $idToken = $response->json()['idToken'];
+        try {
+            $firebaseApiKey = env('FIREBASE_API_KEY');
 
-        // Verify ID Token with Firebase Auth
-        $verifiedIdToken = $this->auth->verifyIdToken($idToken);
-        $uid = $verifiedIdToken->claims()->get('sub'); // Extract the Firebase UID
+            // Send login request to Firebase Authentication REST API
+            $response = Http::post("https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={$firebaseApiKey}", [
+                'email' => $email,
+                'password' => $password,
+                'returnSecureToken' => true
+            ]);
 
-        // Log the Firebase data (for debugging)
-        Log::info('Firebase Authentication Successful', ['uid' => $uid, 'email' => $email]);
+            if (!$response->ok()) {
+                return back()->withErrors(['login' => 'Invalid credentials.'])->withInput();
+            }
 
-        // Store Firebase data in session
-        Session::put('firebase_user_email', $email); // Storing email in session
-        Session::put('firebase_user_uid', $uid); // Storing email in session
+            $idToken = $response->json()['idToken'];
 
-        // Log session data to ensure it's set correctly
-        Log::info('Session data after login', ['session' => session()->all()]);
+            // Verify ID Token with Firebase
+            $verifiedIdToken = $this->auth->verifyIdToken($idToken);
+            $uid = $verifiedIdToken->claims()->get('sub');
 
-        // Redirect to dashboard
-        return redirect()->route('dashboard');
+            Log::info('Firebase Authentication Successful', ['uid' => $uid, 'email' => $email]);
 
-    } catch (\Throwable $e) {
-        Log::error('Login failed', ['error' => $e->getMessage()]);
-        return back()->withErrors(['login' => 'Login failed: ' . $e->getMessage()])->withInput();
+            // Store Firebase data in session
+            Session::put('firebase_user_email', $email);
+            Session::put('firebase_user_uid', $uid);
+
+            Log::info('Session data after login', ['session' => session()->all()]);
+
+            return redirect()->route('dashboard');
+
+        } catch (\Throwable $e) {
+            Log::error('Login failed', ['error' => $e->getMessage()]);
+            return back()->withErrors(['login' => 'Login failed: ' . $e->getMessage()])->withInput();
+        }
     }
-}
-
-
-
 
     public function logout()
     {
         Session::forget('firebase_user_email');
+        Session::forget('firebase_user_uid');
         return redirect()->route('login');
     }
 }
